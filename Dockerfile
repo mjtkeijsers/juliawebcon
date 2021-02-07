@@ -14,15 +14,10 @@ WORKDIR /app
 # Copy the current directory contents into the container at /app
 COPY . /app
 
-# Apparently the webserved in the julia program relies on wget
-#RUN  apt-get update \
-#  && apt-get install -y wget \
-#  && rm -rf /var/lib/apt/lists/*
-
 # Install julia (arbitrary version choice in the container)
 RUN tar -xvf julia-1.5.3-linux-x86_64.tar
 
-# Make port 8081 available to the world outside this container
+# Make port 80 available to the world outside this container
 EXPOSE 80
 
 # Set the path so 'julia' can be found inside the container
