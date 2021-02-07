@@ -11,12 +11,18 @@ println("Starting my server ...")
 
 #in case program runs in container data is stored inside container
 # at /app dir as specified WORKDIR in Dockerfile
+
+#To persist the data file over container sessions:
+# create a 'volume' : docker volume create myvolumename
+#
+#Then start the container by binding the /app dir in container to
+# myvolumename: docker run -v myvolumename:/app -p 80:80 juliacon
 open("serverlocalstorage.txt", "a") do io
        write(io, "Start the server\n")
    end;
 
 HTTP.listen("0.0.0.0", 80) do http
-    println("Caught a request ..." )
+    println("Caught the next request ..." )
 
     d_now = Dates.format(now(), "HH:MM:SS")
 
