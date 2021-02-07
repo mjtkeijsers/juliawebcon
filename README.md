@@ -1,5 +1,5 @@
 # juliawebcon
 Combining Docker, Julia, webserver and local storage in a minimalistic hello world approach
 
-Todo, persist storage over container runs.
+Data can also persist over runs by using volumes, see app.jl (will add later to this file ;-)
 
