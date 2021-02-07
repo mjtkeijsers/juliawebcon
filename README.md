@@ -16,3 +16,6 @@ Then start the container by binding the /app dir in container to myvolumename: d
 The minimalistic julia program writes the time of request received into a file. You can verify volumes 
 work by looking in the container over runs and see that file being appended all the time.
 
+Also notice that when starting 2 containers on the same volume the file is 'shared', both instances write to
+to the same file.
+
