@@ -1,26 +1,50 @@
 # juliawebcon
-Combining Docker, Julia, webserver and local storage in a minimalistic hello world approach
 
+Combining Docker, Julia, webserver and local storage in
+a minimalistic hello world approach.
 Data can also persist over runs by using volumes.
 
-Build this container via: docker build -t juliacon .
+Build this container with:
 
-Run this container via: docker run -p 80:80 juliacon
+```
+make build
+```
 
-if desired can see into the container via: docker exec -t -i mycontainer_id /bin/bash
+Run this container with:
 
-To persist the data file over container sessions, create a 'volume' : docker volume create myvolumename
+```
+make run
+```
 
-Then start the container by binding the /app dir in container to myvolumename: docker run -v myvolumename:/app -p 80:80 juliacon
+if desired can get into the container with:
 
-When running the server can be accessed via browser, localhost:80, on each page refresh a timestamp
+```
+make bash
+```
+
+To persist the data file over container sessions, create a 'volume':
+
+```
+docker volume create myvolumename
+```
+
+Then start the container by binding the `/app` dir in container to
+`myvolumename` volume:
+
+```
+docker run -v myvolumename:/app -p 80:80 juliacon
+```
+
+When running the server can be accessed via browser,
+on `http://localhost:80`, on each page refresh a timestamp
 is written to the web page and into a txt file inside the container.
 
-The minimalistic julia program writes the time of request received into a file. You can verify volumes
-work by looking in the container over runs and see that file being appended all the time.
+The minimalistic julia program writes the time of request received into a file.
+You can verify volumes work by looking in the container over runs and see that
+file being appended all the time.
 
-Also notice that when starting 2 containers on the same volume the file is 'shared', both instances write to
-to the same file.
+Also notice that when starting 2 containers on the same volume the file
+is 'shared', both instances write to to the same file.
 
 With Regards,
 
