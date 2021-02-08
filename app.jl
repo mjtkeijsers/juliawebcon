@@ -6,16 +6,16 @@ using HTTP, Sockets, Dates
 
 println("Starting my server ...")
 
-#Write to a file, this file is stored in the dir where
+# Write to a file, this file is stored in the dir where
 # the julia program runs
 
-#in case program runs in container data is stored inside container
+# in case program runs in container data is stored inside container
 # at /app dir as specified WORKDIR in Dockerfile
 
-#To persist the data file over container sessions:
+# To persist the data file over container sessions:
 # create a 'volume' : docker volume create myvolumename
 #
-#Then start the container by binding the /app dir in container to
+# Then start the container by binding the /app dir in container to
 # myvolumename: docker run -v myvolumename:/app -p 80:80 juliacon
 open("serverlocalstorage.txt", "a") do io
        write(io, "Start the server\n")
