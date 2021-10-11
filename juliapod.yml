@@ -1,0 +1,8 @@
+kind: Pod
+apiVersion: v1
+metadata:
+  name: julia-pod
+spec:
+  containers:
+    - image: my_juliawebcon
+      name: example-julia-container
