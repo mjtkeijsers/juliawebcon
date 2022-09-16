@@ -3,7 +3,7 @@ WORKDIR /app
 
 
 
-ls /app
+RUN ls /app
 
 #RUN docker cp /Volumes/Julia-1.8.1/Julia-1.8.app/Contents/Resources/julia/* /app/julia-1.8.1
 
