@@ -15,17 +15,18 @@ build:
 		echo $(UNAME)
 		echo $(FULLDOCKERNAME)
     ifeq ($(UNAME),arm)
-				#mkdir ./work
-				#curl https://julialang-s3.julialang.org/bin/mac/aarch64/1.8/julia-1.8.1-macaarch64.dmg -o ./work/julia.dmg
-				#hdiutil attach ./work/julia.dmg
+				mkdir ./work
+				curl https://julialang-s3.julialang.org/bin/mac/aarch64/1.8/julia-1.8.1-macaarch64.dmg -o ./work/julia.dmg
+				hdiutil attach ./work/julia.dmg
 
+				tar -czvf ./work/Julia.tgz /Volumes/Julia-1.8.1/*
 	    	cp Dockerfile_M1 Dockerfile
 
 				docker build --no-cache=true -t $(FULLDOCKERNAME) .
 				@# and only now tag the built image as the "latest"
 				docker tag $(FULLDOCKERNAME) $(AUTHOR)/$(NAME):latest
 
-				#rm -rf work
+				rm -rf work
 				#hdiutil detach Julia-1.8.1 -force
         endif
 
