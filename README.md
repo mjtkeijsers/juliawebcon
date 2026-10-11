@@ -1,51 +1,115 @@
-# juliawebcon
+# JuliaWebCon
 
-Combining Docker, Julia, webserver and local storage in
-a minimalistic hello world approach.
-Data can also persist over runs by using volumes.
+A minimal example that combines Docker, Julia, a tiny web server, and local file storage in a simple "hello world" setup.
 
-Build this container with:
+The application runs a small HTTP service in a Docker container, writes a timestamp to a file each time a request is received, and can persist that data across container runs by using Docker volumes.
 
-```
+## What this project does
+
+- Starts a Julia HTTP server on port 80
+- Responds to browser requests with a simple HTML page
+- Logs timestamps to `serverlocalstorage.txt` in `/app`
+- Works in Docker on both x86 and Apple Silicon environments
+- Supports persisting data with Docker volumes
+
+## Architecture
+
+Browser
+  -> Docker container
+    -> Julia HTTP server (`app.jl`)
+      -> writes to `serverlocalstorage.txt`
+
+Each page refresh triggers a new request, the current time is displayed in the browser and appended to the log file.
+
+## Prerequisites
+
+Before running the project, make sure you have:
+
+- Docker installed and running
+- `make` available on your system
+- Network access to download the Julia runtime image
+
+## Quick start
+
+Build the container:
+
+```bash
 make build
 ```
 
-Run this container with:
+Run the container:
 
-```
+```bash
 make run
 ```
 
-if desired can get into the container with:
+Open a browser and visit:
 
+```text
+http://localhost:80
 ```
+
+You should see a page showing the current time, and the server will append a log entry to `serverlocalstorage.txt` on each request.
+
+## Useful commands
+
+Open an interactive shell in the running container:
+
+```bash
 make bash
 ```
 
-To persist the data file over container sessions, create a 'volume':
+Check the response manually from the terminal:
 
-```
-docker volume create myvolumename
-```
-
-Then start the container by binding the `/app` dir in container to
-`myvolumename` volume:
-
-```
-docker run -v myvolumename:/app -p 80:80 juliacon
+```bash
+curl http://localhost:80
 ```
 
-When running the server can be accessed via browser,
-on `http://localhost:80`, on each page refresh a timestamp
-is written to the web page and into a txt file inside the container.
+## Persisting data across container runs
 
-The minimalistic julia program writes the time of request received into a file.
-You can verify volumes work by looking in the container over runs and see that
-file being appended all the time.
+The application writes data to `/app/serverlocalstorage.txt`. By default, that file is stored inside the container filesystem, so it may disappear when the container is removed.
 
-Also notice that when starting 2 containers on the same volume the file
-is 'shared', both instances write to to the same file.
+To persist it across runs, create a Docker volume:
 
-With Regards,
+```bash
+docker volume create juliawebcon_data
+```
+
+Then run the container with the volume mounted to `/app`:
+
+```bash
+docker run -d -p 80:80 -v juliawebcon_data:/app --name juliawebcon keijsers/juliawebcon:latest
+```
+
+This keeps the file on the host machine even if the container is stopped or recreated.
+
+## About the Makefile
+
+The project includes a small `Makefile` to simplify Docker workflows:
+
+- `make build` builds the Docker image
+- `make run` starts the container in the background
+- `make bash` opens a shell inside the container
+- `make test` curls the local HTTP endpoint
+
+## Project files
+
+- `app.jl` - the Julia web server and file-writing logic
+- `Dockerfile_X86` - Docker image definition for x86_64 systems
+- `Dockerfile_M1` - Docker image definition for Apple Silicon systems
+- `Makefile` - convenience commands for building and running the project
+- `juliapod.yml` - project metadata for JuliaPod tooling
+
+## Notes
+
+- This project is intentionally minimal and educational.
+- The example demonstrates how Docker containers can be used for simple local persistence and web services.
+- If you launch multiple containers using the same Docker volume, they will share the same log file and write to it concurrently.
+
+## License
+
+This project is distributed under the MIT License. See `LICENSE` for details.
+
+With regards,
 
 Marc
