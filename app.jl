@@ -1,11 +1,99 @@
-import Pkg;
-Pkg.add("HTTP")
-Pkg.add("Dates")
+using Dates, HTTP, Random
 
-using HTTP, Sockets, Dates
+const BOARD_SIZE = 48
+const LOG_FILE = "serverlocalstorage.txt"
+const SERVER_PORT = parse(Int, get(ENV, "PORT", "80"))
 
-const PAGE = raw"""
-<!doctype html>
+struct GameState
+    cells::Matrix{Bool}
+    generation::Int
+    message::String
+    entered_at::String
+end
+
+function new_world()
+    cells = falses(BOARD_SIZE, BOARD_SIZE)
+    for row in 1:BOARD_SIZE, column in 1:BOARD_SIZE
+        cells[row, column] = rand() < 0.22
+    end
+    return cells
+end
+
+function next_generation(cells::Matrix{Bool})
+    next = falses(BOARD_SIZE, BOARD_SIZE)
+    for row in 1:BOARD_SIZE, column in 1:BOARD_SIZE
+        neighbors = 0
+        for dy in -1:1, dx in -1:1
+            if dx != 0 || dy != 0
+                neighbor_row = mod1(row + dy, BOARD_SIZE)
+                neighbor_column = mod1(column + dx, BOARD_SIZE)
+                neighbors += cells[neighbor_row, neighbor_column]
+            end
+        end
+        next[row, column] = neighbors == 3 || (cells[row, column] && neighbors == 2)
+    end
+    return next
+end
+
+function encode_cells(cells::Matrix{Bool})
+    return join((cells[row, column] ? '1' : '0'
+                 for row in 1:BOARD_SIZE for column in 1:BOARD_SIZE))
+end
+
+function decode_cells(encoded::String)
+    if ncodeunits(encoded) != BOARD_SIZE^2 || any(cell -> cell != '0' && cell != '1', encoded)
+        throw(ArgumentError("Invalid board state."))
+    end
+
+    cells = falses(BOARD_SIZE, BOARD_SIZE)
+    index = 1
+    for row in 1:BOARD_SIZE, column in 1:BOARD_SIZE
+        cells[row, column] = encoded[index] == '1'
+        index += 1
+    end
+    return cells
+end
+
+function load_state(params::AbstractDict{String,String})
+    haskey(params, "board") || throw(ArgumentError("Missing board state."))
+    haskey(params, "generation") || throw(ArgumentError("Missing generation number."))
+
+    generation = tryparse(Int, params["generation"])
+    if generation === nothing || generation < 0
+        throw(ArgumentError("Invalid generation number."))
+    end
+
+    return GameState(
+        decode_cells(params["board"]),
+        generation,
+        get(params, "message", ""),
+        get(params, "entered_at", ""),
+    )
+end
+
+function escape_html(value::AbstractString)
+    escaped = replace(value, "&" => "&amp;")
+    escaped = replace(escaped, "<" => "&lt;")
+    escaped = replace(escaped, ">" => "&gt;")
+    escaped = replace(escaped, "\"" => "&quot;")
+    return replace(escaped, "'" => "&#39;")
+end
+
+function write_hidden(io::IO, name::String, value::AbstractString)
+    print(io, "<input type=\"hidden\" name=\"", name, "\" value=\"",
+          escape_html(value), "\">")
+end
+
+function write_state_fields(io::IO, state::GameState)
+    write_hidden(io, "board", encode_cells(state.cells))
+    write_hidden(io, "generation", string(state.generation))
+    write_hidden(io, "message", state.message)
+    write_hidden(io, "entered_at", state.entered_at)
+end
+
+function render_page(state::GameState)
+    io = IOBuffer()
+    print(io, raw"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -31,7 +119,7 @@ const PAGE = raw"""
       width: min(100%, 700px);
       display: grid;
       justify-items: center;
-      gap: 1.25rem;
+      gap: 1.1rem;
       text-align: center;
     }
     .eyebrow {
@@ -49,7 +137,7 @@ const PAGE = raw"""
     }
     .subtitle { margin: .65rem 0 0; color: #a8bdd0; }
     .board {
-      width: min(78vw, 62vh, 560px);
+      width: min(82vw, 62vh, 560px);
       aspect-ratio: 1;
       padding: clamp(8px, 2vw, 14px);
       border: 1px solid #29445b;
@@ -57,12 +145,32 @@ const PAGE = raw"""
       background: #0a1724;
       box-shadow: 0 24px 80px #0008, 0 0 42px #39d9b51a;
     }
-    canvas { display: block; width: 100%; height: 100%; border-radius: 8px; }
+    .cells {
+      display: grid;
+      width: 100%;
+      height: 100%;
+      grid-template-columns: repeat(48, minmax(0, 1fr));
+      overflow: hidden;
+      border-radius: 8px;
+      background: #0a1724;
+    }
+    .cell {
+      min-width: 0;
+      min-height: 0;
+      margin: 1px;
+      padding: 0;
+      border: 0;
+      border-radius: 2px;
+      background: #122538;
+      cursor: pointer;
+    }
+    .cell.alive { background: #65e6c2; }
+    .cell:hover { outline: 1px solid #d0fff3; outline-offset: -1px; }
     .status { margin: 0; color: #a8bdd0; font-size: .9rem; }
     .status strong { color: #65e6c2; font-variant-numeric: tabular-nums; }
     .controls { display: flex; flex-wrap: wrap; justify-content: center; gap: .7rem; }
-    button {
-      min-width: 116px;
+    button.action {
+      min-width: 132px;
       padding: .7rem 1rem;
       border: 1px solid #38566c;
       border-radius: 999px;
@@ -70,11 +178,12 @@ const PAGE = raw"""
       color: #e5f2ff;
       font: inherit;
       cursor: pointer;
-      transition: background .15s ease, border-color .15s ease, transform .15s ease;
     }
-    button:hover { border-color: #65e6c2; background: #17374a; }
-    button:active { transform: translateY(1px); }
-    button:focus-visible { outline: 2px solid #65e6c2; outline-offset: 3px; }
+    button.action:hover { border-color: #65e6c2; background: #17374a; }
+    button:focus-visible, input:focus-visible {
+      outline: 2px solid #65e6c2;
+      outline-offset: 3px;
+    }
     .text-panel {
       width: min(100%, 560px);
       display: grid;
@@ -90,7 +199,6 @@ const PAGE = raw"""
       font-size: .8rem;
       font-weight: 600;
     }
-    .text-column h2 { font-size: .8rem; }
     .text-entry, .text-result {
       width: 100%;
       min-height: 46px;
@@ -101,12 +209,8 @@ const PAGE = raw"""
       color: #e5f2ff;
       font: inherit;
     }
-    .text-entry:focus { border-color: #65e6c2; outline: 2px solid #65e6c233; }
-    .text-result {
-      min-height: 46px;
-      overflow-wrap: anywhere;
-      color: #65e6c2;
-    }
+    .text-entry:focus { border-color: #65e6c2; }
+    .text-result { overflow-wrap: anywhere; color: #65e6c2; }
     .text-result time {
       display: block;
       margin-bottom: .25rem;
@@ -118,9 +222,6 @@ const PAGE = raw"""
     @media (max-width: 520px) {
       .text-panel { grid-template-columns: 1fr; }
     }
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { scroll-behavior: auto !important; }
-    }
   </style>
 </head>
 <body>
@@ -128,172 +229,117 @@ const PAGE = raw"""
     <header>
       <p class="eyebrow">A tiny universe</p>
       <h1>Conway's Game of Life</h1>
-      <p class="subtitle">Simple rules. Unexpected worlds.</p>
+      <p class="subtitle">Each generation is calculated by Julia.</p>
     </header>
-    <div class="board">
-      <canvas id="life" aria-label="Animated Conway's Game of Life grid"></canvas>
-    </div>
-    <p class="status" aria-live="polite">Generation <strong id="generation">0</strong> · <span id="population">0</span> living cells</p>
-    <div class="controls">
-      <button id="toggle" type="button">Pause</button>
-      <button id="restart" type="button">New world</button>
-    </div>
-    <section class="text-panel" aria-label="Timestamped text">
-      <div class="text-column">
-        <label for="text-entry">Type a message and press Enter</label>
-        <form id="text-form">
-          <input id="text-entry" class="text-entry" type="text" maxlength="500" autocomplete="off" placeholder="Your text…" required>
-        </form>
-      </div>
-      <div class="text-column">
-        <h2>Last entry</h2>
-        <output id="text-result" class="text-result" aria-live="polite">Nothing entered yet.</output>
-      </div>
-    </section>
-    <p class="hint">Click any cell to bring it to life (or let it rest).</p>
-  </main>
-  <script>
-    (() => {
-      const size = 48;
-      const canvas = document.getElementById("life");
-      const context = canvas.getContext("2d");
-      const generationLabel = document.getElementById("generation");
-      const populationLabel = document.getElementById("population");
-      const toggleButton = document.getElementById("toggle");
-      let cells = makeWorld();
-      let generation = 0;
-      let running = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+""")
+    print(io, "<form method=\"post\" class=\"game-form\">")
+    write_state_fields(io, state)
+    print(io, "<div class=\"board\"><div class=\"cells\" role=\"group\" aria-label=\"Game of Life board\">")
+    population = 0
+    for row in 1:BOARD_SIZE, column in 1:BOARD_SIZE
+        alive = state.cells[row, column]
+        population += alive
+        cell_index = (row - 1) * BOARD_SIZE + column
+        cell_class = alive ? "cell alive" : "cell"
+        label = "Toggle cell $row,$column"
+        print(io, "<button type=\"submit\" class=\"", cell_class,
+              "\" name=\"cell\" value=\"", cell_index, "\" aria-label=\"",
+              label, "\"></button>")
+    end
+    print(io, "</div></div>")
+    print(io, "<p class=\"status\">Generation <strong>", state.generation,
+          "</strong> · <span>", population, "</span> living cells</p>")
+    print(io, "<div class=\"controls\">",
+          "<button class=\"action\" type=\"submit\" name=\"action\" value=\"step\">Advance one generation</button>",
+          "<button class=\"action\" type=\"submit\" name=\"action\" value=\"restart\">New world</button>",
+          "</div></form>")
 
-      function makeWorld() {
-        return Array.from({ length: size }, () =>
-          Array.from({ length: size }, () => Math.random() < 0.22 ? 1 : 0)
-        );
-      }
+    print(io, "<section class=\"text-panel\" aria-label=\"Timestamped text\">")
+    print(io, "<div class=\"text-column\"><label for=\"text-entry\">Type a message and press Enter</label>",
+          "<form method=\"post\">")
+    write_state_fields(io, state)
+    print(io, "<input id=\"text-entry\" class=\"text-entry\" type=\"text\" name=\"text\"",
+          " maxlength=\"500\" autocomplete=\"off\" placeholder=\"Your text…\" required>")
+    print(io, "<button class=\"action\" type=\"submit\" name=\"action\" value=\"save-text\">Save text</button>",
+          "</form></div><div class=\"text-column\"><h2>Last entry</h2>",
+          "<div class=\"text-result\" aria-live=\"polite\">")
+    if isempty(state.message)
+        print(io, "Nothing entered yet.")
+    else
+        print(io, "<time>", escape_html(state.entered_at), "</time><span>",
+              escape_html(state.message), "</span>")
+    end
+    print(io, "</div></div></section>",
+          "<p class=\"hint\">Select a cell to toggle it, or advance the simulation one generation.</p>",
+          "</main></body></html>")
+    return String(take!(io))
+end
 
-      function draw() {
-        const scale = window.devicePixelRatio || 1;
-        const bounds = canvas.getBoundingClientRect();
-        const side = Math.max(1, Math.floor(bounds.width * scale));
-        if (canvas.width !== side || canvas.height !== side) {
-          canvas.width = side;
-          canvas.height = side;
-        }
-        context.setTransform(scale, 0, 0, scale, 0, 0);
-        const cellSize = bounds.width / size;
-        context.fillStyle = "#0a1724";
-        context.fillRect(0, 0, bounds.width, bounds.width);
+function response(status::Int, body::AbstractString)
+    return HTTP.Response(status, ["Content-Type" => "text/html; charset=utf-8"],
+                         body=body)
+end
 
-        let population = 0;
-        for (let y = 0; y < size; y += 1) {
-          for (let x = 0; x < size; x += 1) {
-            if (!cells[y][x]) continue;
-            population += 1;
-            context.fillStyle = "#65e6c2";
-            context.fillRect(
-              x * cellSize + 1,
-              y * cellSize + 1,
-              Math.max(1, cellSize - 2),
-              Math.max(1, cellSize - 2)
-            );
-          }
-        }
-        generationLabel.textContent = generation.toLocaleString();
-        populationLabel.textContent = population.toLocaleString();
-      }
+function handle_request(request::HTTP.Request)
+    if request.method != "GET" && request.method != "POST"
+        return response(405, "Method not allowed.")
+    end
 
-      function advance() {
-        cells = cells.map((row, y) => row.map((alive, x) => {
-          let neighbors = 0;
-          for (let dy = -1; dy <= 1; dy += 1) {
-            for (let dx = -1; dx <= 1; dx += 1) {
-              if (dx === 0 && dy === 0) continue;
-              const ny = (y + dy + size) % size;
-              const nx = (x + dx + size) % size;
-              neighbors += cells[ny][nx];
-            }
-          }
-          return neighbors === 3 || (alive && neighbors === 2) ? 1 : 0;
-        }));
-        generation += 1;
-        draw();
-      }
+    params = request.method == "GET" ?
+        HTTP.URIs.queryparams(HTTP.URI(request.target)) :
+        HTTP.URIs.queryparams(String(request.body))
 
-      canvas.addEventListener("click", event => {
-        const bounds = canvas.getBoundingClientRect();
-        const x = Math.floor((event.clientX - bounds.left) / bounds.width * size);
-        const y = Math.floor((event.clientY - bounds.top) / bounds.height * size);
-        if (x >= 0 && x < size && y >= 0 && y < size) {
-          cells[y][x] = cells[y][x] ? 0 : 1;
-          draw();
-        }
-      });
-      toggleButton.addEventListener("click", () => {
-        running = !running;
-        toggleButton.textContent = running ? "Pause" : "Resume";
-      });
-      toggleButton.textContent = running ? "Pause" : "Resume";
-      document.getElementById("text-form").addEventListener("submit", event => {
-        event.preventDefault();
-        const input = document.getElementById("text-entry");
-        const text = input.value;
-        if (!text.trim()) return;
+    if isempty(params) && request.method == "GET" && request.target == "/"
+        return response(200, render_page(GameState(new_world(), 0, "", "")))
+    end
 
-        const enteredAt = new Date();
-        const result = document.getElementById("text-result");
-        const time = document.createElement("time");
-        time.dateTime = enteredAt.toISOString();
-        time.textContent = enteredAt.toLocaleTimeString();
-        const message = document.createElement("span");
-        message.textContent = text;
-        result.replaceChildren(time, message);
-        input.value = "";
-        input.focus();
-      });
-      document.getElementById("restart").addEventListener("click", () => {
-        cells = makeWorld();
-        generation = 0;
-        draw();
-      });
-      window.addEventListener("resize", draw);
-      draw();
-      window.setInterval(() => { if (running) advance(); }, 120);
-    })();
-  </script>
-</body>
-</html>
-"""
+    state = try
+        load_state(params)
+    catch error
+        if error isa ArgumentError
+            return response(400, escape_html(error.msg))
+        end
+        rethrow()
+    end
 
-println("Starting my server ...")
+    if haskey(params, "cell")
+        index = tryparse(Int, params["cell"])
+        if index === nothing || index < 1 || index > BOARD_SIZE^2
+            return response(400, "Invalid cell selection.")
+        end
+        row, column = divrem(index - 1, BOARD_SIZE)
+        state.cells[row + 1, column + 1] = !state.cells[row + 1, column + 1]
+    else
+        action = get(params, "action", "")
+        if action == "step"
+            state = GameState(next_generation(state.cells), state.generation + 1,
+                              state.message, state.entered_at)
+        elseif action == "restart"
+            state = GameState(new_world(), 0, state.message, state.entered_at)
+        elseif action == "save-text"
+            text = get(params, "text", "")
+            if isempty(strip(text)) || ncodeunits(text) > 500
+                return response(400, "Text must contain 1 to 500 bytes.")
+            end
+            state = GameState(state.cells, state.generation, text,
+                              Dates.format(now(), "yyyy-mm-dd HH:MM:SS"))
+        else
+            return response(400, "Unknown action.")
+        end
+    end
 
-# Write to a file, this file is stored in the dir where
-# the julia program runs
+    return response(200, render_page(state))
+end
 
-# in case program runs in container data is stored inside container
-# at /app dir as specified WORKDIR in Dockerfile
+println("Starting Julia Game of Life server on port ", SERVER_PORT, "...")
+open(LOG_FILE, "a") do io
+    write(io, "Start the server\n")
+end
 
-# To persist the data file over container sessions:
-# create a 'volume' : docker volume create myvolumename
-#
-# Then start the container by binding the /app dir in container to
-# myvolumename: docker run -v myvolumename:/app -p 80:80 juliacon
-open("serverlocalstorage.txt", "a") do io
-       write(io, "Start the server\n")
-   end;
-
-HTTP.listen("0.0.0.0", 80) do http
-    println("Caught the next request ..." )
-
-    d_now = Dates.format(now(), "HH:MM:SS")
-
-    #if desired can see into the container via
-    # docker exec -t -i mycontainer_id /bin/bash
-    open("serverlocalstorage.txt", "a") do io
-           write(io, "Serving a request\n")
-           write(io, d_now)
-           write(io, "----\n")
-    end;
-
-    HTTP.setheader(http, "Content-Type" => "text/html; charset=utf-8")
-    write(http, PAGE)
-    return
+HTTP.serve("0.0.0.0", SERVER_PORT) do request
+    timestamp = Dates.format(now(), "yyyy-mm-dd HH:MM:SS")
+    open(LOG_FILE, "a") do io
+        write(io, "Serving a request at ", timestamp, "\n")
+    end
+    return handle_request(request)
 end

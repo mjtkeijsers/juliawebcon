@@ -1,6 +1,8 @@
 FROM --platform=linux/arm64 julia:1.8
 WORKDIR /app
 
+RUN julia -e 'using Pkg; Pkg.add("HTTP")'
+
 COPY app.jl /app/app.jl
 
 EXPOSE 80

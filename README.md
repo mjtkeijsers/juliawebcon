@@ -1,14 +1,15 @@
 # JuliaWebCon
 
-A small Dockerized Julia web server with an animated Conway's Game of Life simulation and local file storage.
+A small Dockerized Julia web server with a server-rendered Conway's Game of Life simulation and local file storage.
 
-The application serves a centered, interactive Game of Life board, writes a timestamp to a file each time a request is received, and can persist that data across container runs by using Docker volumes.
+The application serves a centered, interactive Game of Life board. Julia calculates each generation and handles cell edits and text submissions; the browser uses standard HTML forms with no JavaScript. The server also logs requests and can persist that data across container runs by using Docker volumes.
 
 ## What this project does
 
 - Starts a Julia HTTP server on port 80
-- Responds with a centered, animated Conway's Game of Life board
-- Lets visitors pause, restart, and toggle cells on the board
+- Responds with a centered, interactive Conway's Game of Life board
+- Calculates each generation in Julia when visitors advance the simulation
+- Lets visitors restart the world and toggle individual cells
 - Copies entered text to an adjacent display with the time it was submitted
 - Logs timestamps to `serverlocalstorage.txt` in `/app`
 - Works in Docker on both x86 and Apple Silicon environments
@@ -21,7 +22,7 @@ Browser
     -> Julia HTTP server (`app.jl`)
       -> writes to `serverlocalstorage.txt`
 
-The board evolves in the browser using Conway's rules. Each page refresh also triggers a request, and the server appends its timestamp to the log file.
+The board is rendered by Julia and evolves one generation each time the visitor presses **Advance one generation**. Each interaction submits a standard HTML form to the server, which returns the updated page.
 
 ## Prerequisites
 
@@ -51,7 +52,7 @@ Open a browser and visit:
 http://localhost:80
 ```
 
-You should see the animated Game of Life board. The server appends a log entry to `serverlocalstorage.txt` on each request.
+You should see the Game of Life board. Select cells to toggle them, or advance the simulation one generation at a time. The server appends a log entry to `serverlocalstorage.txt` on each request.
 
 ## Useful commands
 
