@@ -59,6 +59,12 @@ Open an interactive shell in the running container:
 make bash
 ```
 
+Stop the most recently created running container for this project:
+
+```bash
+make stop
+```
+
 Check the response manually from the terminal:
 
 ```bash
@@ -89,6 +95,7 @@ The project includes a small `Makefile` to simplify Docker workflows:
 
 - `make build` builds the Docker image
 - `make run` starts the container in the background
+- `make stop` stops the most recently created running project container
 - `make bash` opens a shell inside the container
 - `make test` curls the local HTTP endpoint
 
