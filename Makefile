@@ -25,7 +25,7 @@ bash:
 	docker run --rm -it --entrypoint /bin/bash $(AUTHOR)/$(NAME):latest
 
 run:
-	docker run -d -p 80:80 $(AUTHOR)/$(NAME):latest
+	docker run -d -p 80:80 -v $(NAME)_data:/app/data $(AUTHOR)/$(NAME):latest
 
 stop:
 	@container_id=$$(docker ps --latest --filter ancestor=$(AUTHOR)/$(NAME):latest --quiet) || exit $$?; \
